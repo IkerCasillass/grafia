@@ -9,13 +9,17 @@
     "ios": {
       "supportsTablet": false,
       "bundleIdentifier": "com.ikercasillas.grafia",
-      "appleTeamId": "4B3TR8K34M"
+      "appleTeamId": "4B3TR8K34M",
+      "icon": {
+        "light": "./assets/icon.png",
+        "dark": "./assets/icon-dark.png",
+        "tinted": "./assets/icon-tinted.png"
+      }
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#faf8f4",
         "foregroundImage": "./assets/android-icon-foreground.png",
-        "backgroundImage": "./assets/android-icon-background.png",
         "monochromeImage": "./assets/android-icon-monochrome.png"
       },
       "predictiveBackGestureEnabled": false,
@@ -27,7 +31,20 @@
     "plugins": [
       "expo-sqlite",
       "expo-asset",
-      "@bacons/apple-targets"
+      "@bacons/apple-targets",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "imageWidth": 150,
+          "resizeMode": "contain",
+          "backgroundColor": "#faf8f4",
+          "dark": {
+            "image": "./assets/splash-icon-dark.png",
+            "backgroundColor": "#141311"
+          }
+        }
+      ]
     ],
     "scheme": "grafia"
   }
