@@ -38,17 +38,19 @@ export function SearchScreen({ db, onSaved }: { db: Databases; onSaved: () => vo
 
   const open = async (value: string) => {
     if (!normalize(value)) return;
-    latest.current++;
+    const request = ++latest.current;
     const word = await canonical(db.dictionary, value);
     Keyboard.dismiss();
     const [found] = await Promise.all([lookup(db.dictionary, word), saveCapture(db.captures, word)]);
-    setChosen((await getCapture(db.captures, word))?.sense ?? null);
+    const capture = await getCapture(db.captures, word);
+    loadRecent();
+    onSaved();
+    if (request !== latest.current) return;
+    setChosen(capture?.sense ?? null);
     setResults(found);
     setText(word);
     setShown(word);
     setSuggestions([]);
-    loadRecent();
-    onSaved();
   };
 
   const choose = async (lemma: string, sense: string) => {

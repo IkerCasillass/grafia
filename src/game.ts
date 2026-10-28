@@ -42,10 +42,13 @@ export function maskGloss(gloss: string, words: string[]): string {
     stems.some((s) => plain(token).startsWith(s)) ? '…' : token);
 }
 
-// Words still in low boxes are the ones worth practising.
+// Words still in low boxes are the ones worth practising. Two saved forms of
+// one lemma share a definition, so they would be the same round twice.
 export function pickTargets(words: Playable[], random: Random = Math.random): Playable[] {
+  const lemmas = new Set<string>();
   return shuffle(words, random)
     .sort((a, b) => a.box - b.box)
+    .filter((word) => !lemmas.has(word.lemma) && lemmas.add(word.lemma))
     .slice(0, ROUNDS);
 }
 
@@ -75,11 +78,12 @@ export function buildQuestion(
 
 // "Escríbela": the definition, a letter pattern, and the word to type.
 
-export type Spelling = { answer: string; accepted: string[]; gloss: string };
+export type Spelling = { typed: string; answer: string; accepted: string[]; gloss: string };
 export type Verdict = 'right' | 'accent' | 'wrong';
 
 export function buildSpelling(target: Playable): Spelling {
   return {
+    typed: target.typed,
     answer: target.lemma,
     accepted: [target.lemma, target.typed],
     gloss: maskGloss(target.gloss, [target.typed, target.lemma]),

@@ -35,6 +35,17 @@ test('low boxes come first, and a game has at most ten rounds', () => {
   assert.ok(picked.slice(0, 5).every((w) => w.box === 0));
 });
 
+test('two saved forms of one lemma are one round, the one in the lower box', () => {
+  const words = [word('lóbregas', 'adj', 2, 'lóbrego'), word('lóbrego', 'adj', 0), word('aciago')];
+  const picked = pickTargets(words);
+  assert.deepEqual(picked.map((w) => w.typed).sort(), ['aciago', 'lóbrego']);
+});
+
+test('the spelling game knows which capture it is asking for', async () => {
+  const { buildSpelling } = await import('../src/game.ts');
+  assert.equal(buildSpelling(word('lóbregas', 'adj', 0, 'lóbrego')).typed, 'lóbregas');
+});
+
 test('spelling: exact is right, a missing tilde is close, anything else is wrong', async () => {
   const { checkSpelling } = await import('../src/game.ts');
   assert.equal(checkSpelling(' Lóbrego ', ['lóbrego']), 'right');

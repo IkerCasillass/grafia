@@ -44,7 +44,7 @@ export function SpellGame({ db, onExit }: { db: Databases; onExit: () => void })
     if (verdict || !text.trim()) return;
     const result = checkSpelling(text, spelling.accepted);
     setVerdict(result);
-    logPlay(db.captures, 'spell', spelling.answer, result !== 'wrong');
+    logPlay(db.captures, 'spell', spelling.typed, result !== 'wrong');
   };
 
   const next = () => {

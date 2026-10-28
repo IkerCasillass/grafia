@@ -4,6 +4,7 @@ import { Alert, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 import { chooseSense, deleteCapture, getCapture, getReview, type Databases } from '../db';
 import { Entries } from '../Entries';
 import { lookup, type Result } from '../lookup';
+import { endOfDay } from '../review';
 import { serif, useTheme } from '../theme';
 
 type Props = { db: Databases; typed: string; onClose: () => void };
@@ -52,7 +53,7 @@ export function WordScreen({ db, typed, onClose }: Props) {
         <Text style={[styles.heading, { color: theme.text }]}>{typed}</Text>
         {due && (
           <Text style={[styles.due, { color: theme.muted }]}>
-            Próximo repaso: {due <= new Date()
+            Próximo repaso: {due.toISOString() <= endOfDay(new Date())
               ? 'hoy'
               : due.toLocaleDateString('es-MX', { day: 'numeric', month: 'long' })}
           </Text>

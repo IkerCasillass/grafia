@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { logPlay, playableCaptures, type Databases } from '../db';
-import { buildQuestion, pickTargets, type Playable, type Question } from '../game';
+import { buildQuestion, pickTargets, shuffle, type Playable, type Question } from '../game';
 import { lookup, randomLemmas, senseById, sensesOf } from '../lookup';
 import { serif, useTheme } from '../theme';
 
@@ -25,10 +25,19 @@ export async function loadPlayable(db: Databases): Promise<Playable[]> {
   return playable.filter((word) => word !== null);
 }
 
+const FILLERS = 12;
+
+// Each randomLemmas call sorts every sense of its part of speech, so draw one
+// pool per part of speech and share it out.
 async function newGame(db: Databases): Promise<Question[]> {
   const saved = await loadPlayable(db);
-  return Promise.all(pickTargets(saved).map(async (target) =>
-    buildQuestion(target, saved, await randomLemmas(db.dictionary, target.pos, 12))));
+  const targets = pickTargets(saved);
+  const pools = new Map<string, string[]>();
+  for (const pos of new Set(targets.map((target) => target.pos))) {
+    const rounds = targets.filter((target) => target.pos === pos).length;
+    pools.set(pos, await randomLemmas(db.dictionary, pos, FILLERS * rounds));
+  }
+  return targets.map((target) => buildQuestion(target, saved, shuffle(pools.get(target.pos)!).slice(0, FILLERS)));
 }
 
 export function WhichGame({ db, onExit }: { db: Databases; onExit: () => void }) {

@@ -78,15 +78,25 @@ async function openDictionary() {
     asset.localUri.slice(slash + 1), {}, asset.localUri.slice(0, slash));
 }
 
-export async function saveCapture(db: SQLite.SQLiteDatabase, typed: string) {
+// withTransactionAsync is a bare BEGIN/COMMIT on the shared connection: two at
+// once nest, fail, and the loser's ROLLBACK aborts the winner. Run them in turn.
+let pending: Promise<unknown> = Promise.resolve();
+
+function serially(task: () => Promise<void>): Promise<void> {
+  const run = pending.then(task, task);
+  pending = run.catch(() => undefined);
+  return run;
+}
+
+export function saveCapture(db: SQLite.SQLiteDatabase, typed: string) {
   const now = new Date().toISOString();
-  await db.withTransactionAsync(async () => {
+  return serially(() => db.withTransactionAsync(async () => {
     await db.runAsync(
       `INSERT INTO capture (typed, captured_at) VALUES (?, ?)
        ON CONFLICT (typed) DO UPDATE SET captured_at = excluded.captured_at`,
       [typed, now]);
     await db.runAsync('INSERT OR IGNORE INTO review (typed, box, due) VALUES (?, 0, ?)', [typed, now]);
-  });
+  }));
 }
 
 export async function chooseSense(
@@ -147,17 +157,17 @@ export async function nextReview(db: SQLite.SQLiteDatabase, now = new Date()) {
   return { due: new Date(next.due), words: words?.n ?? 0 };
 }
 
-export async function recordAnswer(
+export function recordAnswer(
   db: SQLite.SQLiteDatabase, typed: string, knew: boolean, moves: boolean) {
   const now = new Date();
-  const row = await db.getFirstAsync<{ box: number }>('SELECT box FROM review WHERE typed = ?', [typed]);
-  if (!row) return;
-  await db.withTransactionAsync(async () => {
+  return serially(() => db.withTransactionAsync(async () => {
+    const row = await db.getFirstAsync<{ box: number }>('SELECT box FROM review WHERE typed = ?', [typed]);
+    if (!row) return;
     await db.runAsync('INSERT INTO review_log (typed, at, knew, box_before) VALUES (?, ?, ?, ?)',
       [typed, now.toISOString(), knew ? 1 : 0, row.box]);
     if (moves) {
       const next = schedule(row.box, knew, now);
       await db.runAsync('UPDATE review SET box = ?, due = ? WHERE typed = ?', [next.box, next.due, typed]);
     }
-  });
+  }));
 }

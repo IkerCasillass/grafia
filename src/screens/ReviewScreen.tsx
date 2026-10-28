@@ -1,9 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { chooseSense, dueWords, getCapture, nextReview, recordAnswer, type Databases } from '../db';
 import { Entries } from '../Entries';
-import { lookup, type Result } from '../lookup';
+import { lookup, sensesOf, type Query, type Result } from '../lookup';
 import { answer, startSession, type Session } from '../review';
 import { serif, useTheme } from '../theme';
 
@@ -15,9 +15,11 @@ export function ReviewScreen({ db, onAnswered }: { db: Databases; onAnswered: ()
   const [turn, setTurn] = useState(0);
   const [reviewed, setReviewed] = useState(0);
   const [revealed, setRevealed] = useState(false);
-  const [results, setResults] = useState<Result[]>([]);
+  const [results, setResults] = useState<Result[] | null>(null);
   const [chosen, setChosen] = useState<string | null>(null);
   const [next, setNext] = useState<Next>(null);
+  const [stillDue, setStillDue] = useState<string[]>([]);
+  const answering = useRef(false);
 
   useEffect(() => {
     dueWords(db.captures).then((due) => {
@@ -30,14 +32,40 @@ export function ReviewScreen({ db, onAnswered }: { db: Databases; onAnswered: ()
   useEffect(() => {
     if (!current) {
       nextReview(db.captures).then(setNext);
+      dueWords(db.captures).then(setStillDue);
       return;
     }
+    let stale = false;
     setRevealed(false);
-    lookup(db.dictionary, current).then(setResults);
-    getCapture(db.captures, current).then((capture) => setChosen(capture?.sense ?? null));
+    setResults(null);
+    setChosen(null);
+    Promise.all([lookup(db.dictionary, current), getCapture(db.captures, current)])
+      .then(async ([found, capture]) => {
+        const sense = await liveSense(db.dictionary, found, capture?.sense ?? null);
+        if (stale) return;
+        setResults(found);
+        setChosen(sense);
+      });
+    return () => {
+      stale = true;
+    };
   }, [db, current, turn]);
 
   if (!session) return null;
+
+  if (!current && stillDue.length > 0) {
+    return (
+      <View style={styles.done}>
+        <Text style={[styles.doneTitle, { color: theme.text }]}>Buen avance</Text>
+        <Text style={[styles.doneText, { color: theme.muted }]}>
+          Repasaste {reviewed} {reviewed === 1 ? 'palabra' : 'palabras'}. Hoy {stillDue.length === 1 ? 'queda una' : `quedan ${stillDue.length}`}.
+        </Text>
+        <View style={styles.more}>
+          <Button label="Seguir repasando" onPress={() => setSession(startSession(stillDue))} primary />
+        </View>
+      </View>
+    );
+  }
 
   if (!current) {
     return (
@@ -53,13 +81,22 @@ export function ReviewScreen({ db, onAnswered }: { db: Databases; onAnswered: ()
     );
   }
 
+  // A double tap would log the first answer twice and move the word two boxes.
   const respond = async (knew: boolean) => {
-    const { session: after, first } = answer(session, knew);
-    await recordAnswer(db.captures, current, knew, first);
-    if (first) setReviewed((n) => n + 1);
-    setSession(after);
-    setTurn((n) => n + 1);
-    onAnswered();
+    if (answering.current) return;
+    answering.current = true;
+    try {
+      const { session: after, first } = answer(session, knew);
+      await recordAnswer(db.captures, current, knew, first);
+      if (first) setReviewed((n) => n + 1);
+      setRevealed(false);
+      setStillDue([]);
+      setSession(after);
+      setTurn((n) => n + 1);
+      onAnswered();
+    } finally {
+      answering.current = false;
+    }
   };
 
   const choose = async (lemma: string, sense: string) => {
@@ -77,7 +114,7 @@ export function ReviewScreen({ db, onAnswered }: { db: Databases; onAnswered: ()
         {!revealed && (
           <Text style={[styles.prompt, { color: theme.muted }]}>¿Recuerdas qué significa?</Text>
         )}
-        {revealed && (
+        {revealed && results && (
           <Entries query={db.dictionary} typed={current} results={results} chosen={chosen} onChoose={choose} focused />
         )}
       </ScrollView>
@@ -111,6 +148,15 @@ function Button({ label, onPress, primary }: { label: string; onPress: () => voi
   );
 }
 
+// A new dictionary build can drop or renumber the sense a capture saved.
+async function liveSense(query: Query, results: Result[], id: string | null): Promise<string | null> {
+  if (!id) return null;
+  for (const result of results) {
+    if ((await sensesOf(query, result.lemma)).some((sense) => sense.id === id)) return id;
+  }
+  return null;
+}
+
 function when(due: Date): string {
   const days = Math.round((startOfDay(due) - startOfDay(new Date())) / 86_400_000);
   if (days === 1) return 'Mañana';
@@ -134,4 +180,5 @@ const styles = StyleSheet.create({
   done: { flex: 1, justifyContent: 'center', paddingHorizontal: 32, paddingBottom: 80 },
   doneTitle: { fontFamily: serif, fontSize: 32, textAlign: 'center', marginBottom: 12 },
   doneText: { fontSize: 17, lineHeight: 25, textAlign: 'center' },
+  more: { flexDirection: 'row', marginTop: 28 },
 });
