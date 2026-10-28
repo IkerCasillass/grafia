@@ -10,8 +10,12 @@ import { endOfDay, schedule } from './review';
 const OLD_COPIES = ['dictionary-1.db', 'dictionary-2.db', 'dictionary-3.db'];
 
 // Captures live in their own file so a new dictionary never touches them.
-const CAPTURES_SCHEMA = `
-PRAGMA foreign_keys = ON;
+// Each entry runs once, in order, recorded in PRAGMA user_version. Never edit a
+// shipped migration: phones that already ran it would never see the change.
+const MIGRATIONS = [
+  // 1. The schema the MVP shipped with. IF NOT EXISTS because phones that ran
+  // the MVP have these tables already, at user_version 0.
+  `
 CREATE TABLE IF NOT EXISTS capture (
   typed       TEXT PRIMARY KEY,
   lemma       TEXT,
@@ -39,7 +43,27 @@ CREATE TABLE IF NOT EXISTS play_log (
 );
 CREATE TABLE IF NOT EXISTS device (id TEXT PRIMARY KEY);
 INSERT OR IGNORE INTO review (typed, box, due) SELECT typed, 0, captured_at FROM capture;
-`;
+`,
+  // 2. The word of the day. origin can't be reconstructed later: NULL is a word
+  // met while reading, 'daily' one saved from the widget.
+  `
+ALTER TABLE capture ADD COLUMN origin TEXT;
+CREATE TABLE daily_cache (
+  date    TEXT PRIMARY KEY,
+  payload TEXT NOT NULL
+);
+`,
+];
+
+async function migrate(db: SQLite.SQLiteDatabase) {
+  const row = await db.getFirstAsync<{ user_version: number }>('PRAGMA user_version');
+  for (let version = row?.user_version ?? 0; version < MIGRATIONS.length; version++) {
+    await db.withTransactionAsync(async () => {
+      await db.execAsync(MIGRATIONS[version]);
+      await db.execAsync(`PRAGMA user_version = ${version + 1}`);
+    });
+  }
+}
 
 export type Capture = {
   typed: string;
@@ -47,6 +71,7 @@ export type Capture = {
   sense: string | null;
   captured_at: string;
   note: string | null;
+  origin: string | null;
 };
 
 export type Databases = { dictionary: Query; captures: SQLite.SQLiteDatabase };
@@ -57,7 +82,9 @@ export async function openDatabases(): Promise<Databases> {
     await SQLite.deleteDatabaseAsync(old).catch(() => undefined);
   }
   const captures = await SQLite.openDatabaseAsync('captures.db');
-  await captures.execAsync(CAPTURES_SCHEMA);
+  // Per connection, not per database: it has to be set on every open.
+  await captures.execAsync('PRAGMA foreign_keys = ON');
+  await migrate(captures);
   // The key a later backup uploads under. Nothing reads it yet.
   await captures.runAsync(
     'INSERT INTO device (id) SELECT ? WHERE NOT EXISTS (SELECT 1 FROM device)', [randomUUID()]);
@@ -88,13 +115,15 @@ function serially(task: () => Promise<void>): Promise<void> {
   return run;
 }
 
-export function saveCapture(db: SQLite.SQLiteDatabase, typed: string) {
+// origin is set only when the capture is new: a word saved from the widget
+// and later met in a book stays 'daily', where it first came from.
+export function saveCapture(db: SQLite.SQLiteDatabase, typed: string, origin: 'daily' | null = null) {
   const now = new Date().toISOString();
   return serially(() => db.withTransactionAsync(async () => {
     await db.runAsync(
-      `INSERT INTO capture (typed, captured_at) VALUES (?, ?)
+      `INSERT INTO capture (typed, captured_at, origin) VALUES (?, ?, ?)
        ON CONFLICT (typed) DO UPDATE SET captured_at = excluded.captured_at`,
-      [typed, now]);
+      [typed, now, origin]);
     await db.runAsync('INSERT OR IGNORE INTO review (typed, box, due) VALUES (?, 0, ?)', [typed, now]);
   }));
 }
@@ -170,4 +199,14 @@ export function recordAnswer(
       await db.runAsync('UPDATE review SET box = ?, due = ? WHERE typed = ?', [next.box, next.due, typed]);
     }
   }));
+}
+
+export async function cacheDaily(db: SQLite.SQLiteDatabase, date: string, payload: string) {
+  await db.runAsync('INSERT OR REPLACE INTO daily_cache (date, payload) VALUES (?, ?)', [date, payload]);
+}
+
+export async function cachedDaily(db: SQLite.SQLiteDatabase, date: string) {
+  const row = await db.getFirstAsync<{ payload: string }>(
+    'SELECT payload FROM daily_cache WHERE date = ?', [date]);
+  return row?.payload ?? null;
 }

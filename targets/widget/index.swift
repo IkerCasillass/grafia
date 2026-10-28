@@ -5,6 +5,7 @@ import WidgetKit
 struct GrafiaWidgets: WidgetBundle {
   var body: some Widget {
     SearchWidget()
+    DailyWordWidget()
     SearchControl()
   }
 }

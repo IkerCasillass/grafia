@@ -4,13 +4,13 @@ import WidgetKit
 // The app opens this on the search screen, empty, with the keyboard up.
 let searchURL = URL(string: "grafia://buscar")!
 
-private let accent = Color(UIColor { traits in
+let accent = Color(UIColor { traits in
   traits.userInterfaceStyle == .dark
     ? UIColor(red: 0.83, green: 0.60, blue: 0.45, alpha: 1)
     : UIColor(red: 0.54, green: 0.29, blue: 0.16, alpha: 1)
 })
 
-private let paper = Color(UIColor { traits in
+let paper = Color(UIColor { traits in
   traits.userInterfaceStyle == .dark
     ? UIColor(red: 0.08, green: 0.07, blue: 0.07, alpha: 1)
     : UIColor(red: 0.98, green: 0.97, blue: 0.96, alpha: 1)

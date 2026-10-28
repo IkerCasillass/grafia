@@ -3,7 +3,9 @@ import { useCallback, useEffect, useState } from 'react';
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 
+import { isDate } from './src/daily';
 import { dueCount, openDatabases, type Databases } from './src/db';
+import { DailyWordScreen } from './src/screens/DailyWordScreen';
 import { GamesScreen } from './src/screens/GamesScreen';
 import { ListScreen } from './src/screens/ListScreen';
 import { ReviewScreen } from './src/screens/ReviewScreen';
@@ -13,7 +15,9 @@ import { serif, useTheme } from './src/theme';
 
 type Screen =
   | { name: 'search' } | { name: 'review' } | { name: 'game' } | { name: 'list' }
-  | { name: 'word'; typed: string };
+  | { name: 'word'; typed: string } | { name: 'daily'; date: string };
+
+const DAILY_LINK = 'grafia://palabra/';
 
 export default function App() {
   const theme = useTheme();
@@ -33,6 +37,10 @@ export default function App() {
       if (url?.startsWith('grafia://buscar')) {
         setScreen({ name: 'search' });
         setSearchKey((n) => n + 1);
+      } else if (url?.startsWith(DAILY_LINK)) {
+        // A link is outside input: only a real date reaches a URL.
+        const date = url.slice(DAILY_LINK.length).split(/[?#/]/)[0];
+        if (isDate(date)) setScreen({ name: 'daily', date });
       }
     };
     Linking.getInitialURL().then(open);
@@ -67,6 +75,9 @@ export default function App() {
             {screen.name === 'word' && (
               <WordScreen db={db} typed={screen.typed} onClose={() => setScreen({ name: 'list' })} />
             )}
+            {screen.name === 'daily' && (
+              <DailyWordScreen db={db} date={screen.date} onClose={() => setScreen({ name: 'search' })} />
+            )}
           </>
         )}
       </SafeAreaView>
@@ -78,7 +89,7 @@ type TabsProps = { screen: Screen; due: number; onChange: (screen: Screen) => vo
 
 function Tabs({ screen, due, onChange }: TabsProps) {
   const theme = useTheme();
-  const current = screen.name === 'word' ? 'list' : screen.name;
+  const current = screen.name === 'word' ? 'list' : screen.name === 'daily' ? 'search' : screen.name;
   const tabs = [
     { name: 'search', label: 'Buscar' },
     { name: 'review', label: 'Repasar' },
